@@ -1,6 +1,5 @@
 const inquirer = require('inquirer');
 const mysql = require('mysql2');
-const { last } = require('rxjs');
 require('dotenv').config();
 
 
@@ -61,7 +60,7 @@ inquirer.prompt([
 showMenu();
 
 const departmentTable = () => {
-    db.query('SELECT * FROM departments', function (err, results) {
+    db.query('SELECT * FROM departments ORDER BY id', function (err, results) {
         console.table(results);
         showMenu();
     });
@@ -72,6 +71,7 @@ const roleTable = () => {
     SELECT roles.id, roles.title, roles.salary, departments.department_name
     FROM roles
     INNER JOIN departments ON roles.department_id = departments.id
+    ORDER BY roles.id
   `;
     
     db.query(query, function (err, results) {
@@ -87,6 +87,7 @@ const employeeTable = () => {
     INNER JOIN roles ON employees.role_id = roles.id
     INNER JOIN departments ON roles.department_id = departments.id
     LEFT JOIN employees AS manager ON employees.manager_id = manager.id
+    ORDER BY employees.id
   `;
     
     db.query(query, function (err, results) {
@@ -105,61 +106,210 @@ const addDepartment = () => {
     ]).then(answers => {
         db.query('INSERT INTO departments (department_name) VALUES (?)', answers.department, function (err, results) {
             console.log(`${answers.department} added to Departments table.`);
+            showMenu();
         });
     });
 };
 
 const addRole = () => {
-    inquirer.prompt([
-        {
+    let departmentNames = [];
+  
+    db.query('SELECT department_name FROM departments', function (err, results) {
+      if (err) {
+        console.error('Error retrieving department names:', err);
+        return;
+      }
+  
+      departmentNames = results.map((row) => row.department_name);
+  
+      inquirer
+        .prompt([
+          {
             type: 'input',
             name: 'title',
-            message: 'What is the role title?'
-        },
-        {
+            message: 'What is the role title?',
+          },
+          {
             type: 'input',
             name: 'salary',
-            message: 'What is the role salary?'
-        },
-        {
-            type: 'input',
+            message: 'What is the role salary?',
+          },
+          {
+            type: 'list',
             name: 'department_id',
-            message: 'What is the department id?'
-        }
-    ]).then(answers => {
-        db.query('INSERT INTO roles (title, salary, department_id) VALUES (?, ?, ?)', [answers.title, answers.salary, answers.department_id], function (err, results) {
-            console.log(`${answers.title} added to the Roles table.`);
+            message: 'Select the department:',
+            choices: departmentNames,
+          },
+        ])
+        .then((answers) => {
+          db.query(
+            'SELECT id FROM departments WHERE department_name = ?',
+            answers.department_id,
+            function (err, results) {
+              if (err) {
+                console.error('Error retrieving department id:', err);
+                return;
+              }
+  
+              const departmentId = results[0].id;
+  
+              db.query(
+                'INSERT INTO roles (title, salary, department_id) VALUES (?, ?, ?)',
+                [answers.title, answers.salary, departmentId],
+                function (err, results) {
+                  console.log(`${answers.title} added to the Roles table.`);
+                  showMenu();
+                }
+              );
+            }
+          );
         });
     });
-};
+  };
 
-const addEmployee = () => {
-    inquirer.prompt([
-        {
-            type: 'input',
-            name: 'first_name',
-            message: 'What is the employee first name?'
-        },
-        {
-            type: 'input',
-            name: 'last_name',
-            message: 'What is the employee last name?'
-        },
-        {
-            type: 'input',
-            name: 'title',
-            message: 'What is the employee title?'
-        },
-        {
-            type: 'input',
-            name: 'manager',
-            message: 'What is the employee manager?'
+  const addEmployee = () => {
+    let roleTitles = [];
+    let managerNames = [];
+  
+    db.query('SELECT title FROM roles', function (err, results) {
+      if (err) {
+        console.error('Error retrieving role titles:', err);
+        return;
+      }
+  
+      roleTitles = results.map((row) => row.title);
+  
+      db.query('SELECT CONCAT(first_name, " ", last_name) AS manager FROM employees', function (err, results) {
+        if (err) {
+          console.error('Error retrieving manager names:', err);
+          return;
         }
-    ]).then(answers => {
-        db.query('INSERT INTO employees (first_name, last_name, title, manager_id) VALUES (?, ?, ?, ?)', [answers.first_name, answers.last_name, answers.role, answers.manager], function (err, results) {
-            console.log(`${answers.first_name} ${answers.last.name} added to Employees table.`);
-        });
-    })
-};
+  
+        managerNames = results.map((row) => row.manager);
+  
+        inquirer
+          .prompt([
+            {
+              type: 'input',
+              name: 'first_name',
+              message: 'What is the employee first name?',
+            },
+            {
+              type: 'input',
+              name: 'last_name',
+              message: 'What is the employee last name?',
+            },
+            {
+              type: 'list',
+              name: 'role',
+              message: 'Select the employee role:',
+              choices: roleTitles,
+            },
+            {
+              type: 'list',
+              name: 'manager',
+              message: 'Select the employee manager:',
+              choices: managerNames,
+            },
+          ])
+          .then((answers) => {
+            db.query('SELECT id FROM roles WHERE title = ?', answers.role, function (err, results) {
+              if (err) {
+                console.error('Error retrieving role id:', err);
+                return;
+              }
+  
+              const roleId = results[0].id;
+  
+              db.query('SELECT id FROM employees WHERE CONCAT(first_name, " ", last_name) = ?', answers.manager, function (
+                err,
+                results
+              ) {
+                if (err) {
+                  console.error('Error retrieving manager id:', err);
+                  return;
+                }
+  
+                const managerId = results[0].id;
+  
+                db.query(
+                  'INSERT INTO employees (first_name, last_name, role_id, manager_id) VALUES (?, ?, ?, ?)',
+                  [answers.first_name, answers.last_name, roleId, managerId],
+                  function (err, results) {
+                    if (err) {
+                      console.error('Error adding employee:', err);
+                    } else {
+                      console.log(`${answers.first_name} ${answers.last_name} added to Employees table.`);
+                      showMenu();
+                    }
+                  }
+                );
+              });
+            });
+          });
+      });
+    });
+  };
 
+const updateEmployee = () => {
+    let employeeNames = [];
+    let roleTitles = [];
+  
+    db.query('SELECT CONCAT(first_name, " ", last_name) AS employee FROM employees', function (err, results) {
+      if (err) {
+        console.error('Error retrieving employee names:', err);
+        return;
+      }
+  
+      employeeNames = results.map((row) => row.employee);
+  
+      db.query('SELECT title FROM roles', function (err, results) {
+        if (err) {
+          console.error('Error retrieving role titles:', err);
+          return;
+        }
+  
+        roleTitles = results.map((row) => row.title);
+  
+        inquirer
+          .prompt([
+            {
+              type: 'list',
+              name: 'employee',
+              message: 'Select the employee to update:',
+              choices: employeeNames,
+            },
+            {
+              type: 'list',
+              name: 'role',
+              message: 'Select the new role for the employee:',
+              choices: roleTitles,
+            },
+          ])
+          .then((answers) => {
+            db.query('SELECT id FROM roles WHERE title = ?', answers.role, function (err, results) {
+              if (err) {
+                console.error('Error retrieving role id:', err);
+                return;
+              }
+  
+              const roleId = results[0].id;
+  
+              db.query(
+                'UPDATE employees SET role_id = ? WHERE CONCAT(first_name, " ", last_name) = ?',
+                [roleId, answers.employee],
+                function (err, results) {
+                  if (err) {
+                    console.error('Error updating employee:', err);
+                  } else {
+                    console.log(`${answers.employee} updated to ${answers.role} in Employees table.`);
+                    showMenu();
+                  }
+                }
+              );
+            });
+          });
+      });
+    });
+  };
 
