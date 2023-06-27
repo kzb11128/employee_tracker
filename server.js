@@ -1,7 +1,7 @@
 const inquirer = require('inquirer');
 const mysql = require('mysql2');
+const { last } = require('rxjs');
 require('dotenv').config();
-// const cTable = require('console.table');
 
 
 const db = mysql.createConnection(
@@ -68,14 +68,28 @@ const departmentTable = () => {
 };
 
 const roleTable = () => {
-    db.query('SELECT * FROM roles', function (err, results) {
+    const query = `
+    SELECT roles.id, roles.title, roles.salary, departments.department_name
+    FROM roles
+    INNER JOIN departments ON roles.department_id = departments.id
+  `;
+    
+    db.query(query, function (err, results) {
         console.table(results);
         showMenu();
     });
 };
 
 const employeeTable = () => {
-    db.query('SELECT * FROM employees', function (err, results) {
+    const query = `
+    SELECT employees.id, employees.first_name, employees.last_name, roles.title, departments.department_name, roles.salary, CONCAT(manager.first_name, ' ', manager.last_name) AS manager
+    FROM employees
+    INNER JOIN roles ON employees.role_id = roles.id
+    INNER JOIN departments ON roles.department_id = departments.id
+    LEFT JOIN employees AS manager ON employees.manager_id = manager.id
+  `;
+    
+    db.query(query, function (err, results) {
         console.table(results);
         showMenu();
     });
@@ -89,12 +103,10 @@ const addDepartment = () => {
             message: 'What is the department name?'
         }
     ]).then(answers => {
-        db.query('INSERT INTO departments (name) VALUES (?)', answers.department, function (err, results) {
-            console.log('Department added.');
-            departmentTable();
+        db.query('INSERT INTO departments (department_name) VALUES (?)', answers.department, function (err, results) {
+            console.log(`${answers.department} added to Departments table.`);
         });
     });
-    showMenu();
 };
 
 const addRole = () => {
@@ -116,10 +128,38 @@ const addRole = () => {
         }
     ]).then(answers => {
         db.query('INSERT INTO roles (title, salary, department_id) VALUES (?, ?, ?)', [answers.title, answers.salary, answers.department_id], function (err, results) {
-            console.log('Role added.');
-            roleTable();
+            console.log(`${answers.title} added to the Roles table.`);
         });
     });
-    showMenu();
 };
+
+const addEmployee = () => {
+    inquirer.prompt([
+        {
+            type: 'input',
+            name: 'first_name',
+            message: 'What is the employee first name?'
+        },
+        {
+            type: 'input',
+            name: 'last_name',
+            message: 'What is the employee last name?'
+        },
+        {
+            type: 'input',
+            name: 'title',
+            message: 'What is the employee title?'
+        },
+        {
+            type: 'input',
+            name: 'manager',
+            message: 'What is the employee manager?'
+        }
+    ]).then(answers => {
+        db.query('INSERT INTO employees (first_name, last_name, title, manager_id) VALUES (?, ?, ?, ?)', [answers.first_name, answers.last_name, answers.role, answers.manager], function (err, results) {
+            console.log(`${answers.first_name} ${answers.last.name} added to Employees table.`);
+        });
+    })
+};
+
 
